@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Agente IA — Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #12161c;
+    --surface: #191f27;
+    --surface-2: #1f2731;
+    --line: #2a323d;
+    --text: #e8ecef;
+    --muted: #7c8798;
+    --accent: #5eead4;
+    --accent-dim: #2a4a46;
+    --lead: #f5a623;
+    --lead-dim: #4a3a1a;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);}
+
+  .app{
+    display:grid;
+    grid-template-columns: 320px 1fr 260px;
+    height:100vh;
+    min-height:600px;
+  }
+  @media (max-width: 900px){
+    .app{ grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; height:auto; min-height:100vh; }
+    .panel-config, .panel-leads{ max-height: 280px; overflow-y:auto; }
+  }
+
+  /* ---- shared ---- */
+  .panel-title{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--muted);
+    padding:14px 16px 8px;
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:8px;
+  }
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);}
+
+  /* ---- config panel ---- */
+  .panel-config{ background:var(--surface); border-right:1px solid var(--line); overflow-y:auto; }
+  .cfg-body{ padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
+  .field label{ display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:8px 10px; font-family:var(--sans); font-size:13px; resize:vertical;
+  }
+  .field textarea{ min-height:64px; line-height:1.4; }
+  .field input:focus, .field select:focus, .field textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent);}
+  .apply-btn{
+    margin-top:4px; background:var(--accent); color:#0a1210; border:none; border-radius:6px;
+    font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    padding:10px; cursor:pointer;
+  }
+  .apply-btn:hover{ filter:brightness(1.08); }
+  .apply-btn:active{ transform:translateY(1px); }
+  .cfg-hint{ font-size:11.5px; color:var(--muted); line-height:1.5; }
+
+  /* ---- chat panel ---- */
+  .panel-chat{ display:flex; flex-direction:column; background:var(--bg); min-width:0; }
+  .chat-header{
+    padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;
+  }
+  .chat-header .name{ font-weight:600; font-size:14.5px; }
+  .chat-header .status{ font-family:var(--mono); font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px; }
+  .reset-btn{ background:transparent; border:1px solid var(--line); color:var(--muted); font-family:var(--mono); font-size:10.5px;
+    padding:6px 10px; border-radius:5px; cursor:pointer; text-transform:uppercase; letter-spacing:.05em; }
+  .reset-btn:hover{ border-color:var(--muted); color:var(--text); }
+
+  .messages{ flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .msg{ max-width:72%; padding:10px 13px; border-radius:10px; font-size:14px; line-height:1.5; white-space:pre-wrap; }
+  .msg.user{ align-self:flex-end; background:var(--surface-2); border:1px solid var(--line); }
+  .msg.agent{ align-self:flex-start; background:var(--accent-dim); border:1px solid #345a54; }
+  .msg.system-note{ align-self:center; color:var(--muted); font-family:var(--mono); font-size:11px; }
+  .typing{ align-self:flex-start; font-family:var(--mono); font-size:12px; color:var(--muted); padding-left:4px; }
+
+  .composer{ border-top:1px solid var(--line); padding:12px 16px; display:flex; gap:8px; }
+  .composer input{
+    flex:1; background:var(--surface); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:11px 13px; font-family:var(--sans); font-size:14px;
+  }
+  .composer input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .send-btn{ background:var(--accent); color:#0a1210; border:none; border-radius:8px; padding:0 18px;
+    font-family:var(--mono); font-size:12px; font-weight:700; text-transform:uppercase; cursor:pointer; }
+  .send-btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* ---- leads panel ---- */
+  .panel-leads{ background:var(--surface); border-left:1px solid var(--line); overflow-y:auto; }
+  .leads-body{ padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .leads-empty{ font-size:12px; color:var(--muted); line-height:1.6; padding-top:6px; }
+  .ticket{
+    background:var(--lead-dim); border:1px solid #6b5220; border-left:3px solid var(--lead);
+    border-radius:6px; padding:10px 12px; font-family:var(--mono); font-size:11.5px; line-height:1.6;
+    animation: stamp .35s ease-out;
+  }
+  @keyframes stamp{ from{ transform:translateY(-6px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+  .ticket .t-head{ display:flex; justify-content:space-between; color:var(--lead); font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em; }
+  .ticket .t-row span{ color:var(--muted); }
+
+  @media (prefers-reduced-motion: reduce){
+    .ticket{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- CONFIG PANEL -->
+  <div class="panel-config">
+    <div class="panel-title"><span class="dot"></span>Configurar negócio</div>
+    <div class="cfg-body">
+      <div class="field">
+        <label>Nome do negócio</label>
+        <input id="cfg-name" value="Clínica Dental Sorriso">
+      </div>
+      <div class="field">
+        <label>Setor</label>
+        <input id="cfg-sector" value="Clínica dentária">
+      </div>
+      <div class="field">
+        <label>Idioma do agente</label>
+        <select id="cfg-lang">
+          <option value="pt">Português</option>
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Horário de atendimento</label>
+        <input id="cfg-hours" value="Seg–Sex, 9h–19h">
+      </div>
+      <div class="field">
+        <label>Serviços (um por linha)</label>
+        <textarea id="cfg-services">Consulta de rotina
+Branqueamento dentário
+Ortodontia
+Implantes</textarea>
+      </div>
+      <div class="field">
+        <label>FAQ (Pergunta: Resposta)</label>
+        <textarea id="cfg-faq" style="min-height:100px;">Aceitam seguros?: Sim, trabalhamos com a maioria das seguradoras.
+Preço da consulta?: A primeira consulta custa 30€.
+Onde ficam?: Estamos no centro de Lisboa, perto do Marquês de Pombal.</textarea>
+      </div>
+      <div class="field">
+        <label>O que conta como lead qualificado</label>
+        <input id="cfg-goal" value="Quer marcar uma consulta ou pedir orçamento">
+      </div>
+      <button class="apply-btn" id="apply-btn">Aplicar e reiniciar</button>
+      <div class="cfg-hint">Edita os campos acima para simular qualquer setor — depois carrega em "Aplicar" para reconfigurar o agente e testar a conversa à direita.</div>
+    </div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div class="panel-chat">
+    <div class="chat-header">
+      <div class="name" id="header-name">Agente — Clínica Dental Sorriso</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="status"><span class="dot"></span><span id="status-text">Online</span></div>
+        <button class="reset-btn" id="reset-btn">Reiniciar</button>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="composer">
+      <input id="input-box" type="text" placeholder="Escreve como se fosses um cliente..." />
+      <button class="send-btn" id="send-btn">Enviar</button>
+    </div>
+  </div>
+
+  <!-- LEADS PANEL -->
+  <div class="panel-leads">
+    <div class="panel-title"><span class="dot" style="background:var(--lead); box-shadow:0 0 6px var(--lead);"></span>Leads capturados</div>
+    <div class="leads-body" id="leads-body">
+      <div class="leads-empty" id="leads-empty">Ainda sem leads. Quando o agente identificar nome, contacto e necessidade, aparece aqui um ticket automaticamente.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let config = null;
+let messages = [];
+let leadCount = 0;
+
+function readConfig(){
+  return {
+    name: document.getElementById('cfg-name').value.trim() || 'Negócio',
+    sector: document.getElementById('cfg-sector').value.trim() || 'geral',
+    lang: document.getElementById('cfg-lang').value,
+    hours: document.getElementById('cfg-hours').value.trim(),
+    services: document.getElementById('cfg-services').value.trim(),
+    faq: document.getElementById('cfg-faq').value.trim(),
+    goal: document.getElementById('cfg-goal').value.trim()
+  };
+}
+
+function langLabel(lang){
+  if(lang === 'es') return 'espanhol';
+  if(lang === 'en') return 'inglês';
+  return 'português europeu';
+}
+
+function buildSystemPrompt(cfg){
+  return `Você é o agente de atendimento virtual de "${cfg.name}", um negócio do setor "${cfg.sector}".
+Responde sempre em ${langLabel(cfg.lang)}, num tom simpático, direto e profissional.
+
+INFORMAÇÃO DO NEGÓCIO (usa só isto — nunca inventes factos que não estão aqui):
+Horário: ${cfg.hours || 'não especificado'}
+Serviços:
+${cfg.services || '(não especificado)'}
+Perguntas frequentes:
+${cfg.faq || '(não especificado)'}
+
+As tuas duas funções são:
+1. Responder a perguntas do cliente usando apenas a informação acima. Se não souberes algo, diz que vais confirmar com a equipa humana — nunca inventes preços, horários ou serviços que não estão listados.
+2. Qualificar o lead naturalmente ao longo da conversa: quando perceberes interesse genuíno (${cfg.goal || 'quer saber mais ou contratar'}), pergunta com naturalidade pelo nome, um contacto (telefone ou email) e o que precisa exatamente. Não interrogues logo na primeira mensagem — deixa a conversa fluir.
+
+Assim que tiveres recolhido nome + contacto + necessidade numa mesma conversa, termina a tua resposta (depois de responderes normalmente ao cliente) com um bloco EXATO neste formato, numa linha própria, sem nada a seguir:
+[[LEAD_CAPTURED]]{"name":"...", "contact":"...", "need":"..."}[[/LEAD_CAPTURED]]
+
+Só emite esse bloco UMA vez por conversa, quando tiveres mesmo as três informações. Nunca menciones este bloco ao cliente nem expliques que estás a capturá-lo — é invisível para ele.`;
+}
+
+function renderHeader(cfg){
+  document.getElementById('header-name').textContent = `Agente — ${cfg.name}`;
+}
+
+function addMessage(role, text){
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role === 'user' ? 'user' : role === 'agent' ? 'agent' : 'system-note');
+  div.textContent = text;
+  document.getElementById('messages').appendChild(div);
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+}
+
+function addTicket(lead){
+  leadCount++;
+  const empty = document.getElementById('leads-empty');
+  if(empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'ticket';
+  div.innerHTML = `
+    <div class="t-head"><span>Lead #${leadCount}</span><span>agora</span></div>
+    <div class="t-row"><span>Nome: </span>${escapeHtml(lead.name || '—')}</div>
+    <div class="t-row"><span>Contacto: </span>${escapeHtml(lead.contact || '—')}</div>
+    <div class="t-row"><span>Necessidade: </span>${escapeHtml(lead.need || '—')}</div>
+  `;
+  document.getElementById('leads-body').appendChild(div);
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function resetChat(){
+  config = readConfig();
+  messages = [];
+  renderHeader(config);
+  document.getElementById('messages').innerHTML = '';
+  addMessage('system-note', `Agente reconfigurado para "${config.name}". Escreve uma mensagem como se fosses cliente.`);
+}
+
+async function sendMessage(){
+  const box = document.getElementById('input-box');
+  const text = box.value.trim();
+  if(!text) return;
+  box.value = '';
+  addMessage('user', text);
+  messages.push({ role: 'user', content: text });
+
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn.disabled = true;
+  document.getElementById('status-text').textContent = 'a escrever...';
+
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'typing';
+  typingDiv.textContent = 'agente está a escrever...';
+  document.getElementById('messages').appendChild(typingDiv);
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+
+  try{
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: buildSystemPrompt(config),
+        messages: messages
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Erro desconhecido do servidor.');
+    }
+    const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text);
+    let full = textBlocks.join('\n').trim();
+
+    let displayText = full;
+    const match = full.match(/\[\[LEAD_CAPTURED\]\]([\s\S]*?)\[\[\/LEAD_CAPTURED\]\]/);
+    if(match){
+      displayText = full.replace(match[0], '').trim();
+      try{
+        const lead = JSON.parse(match[1]);
+        addTicket(lead);
+      }catch(e){ /* ignore malformed json */ }
+    }
+
+    typingDiv.remove();
+    addMessage('agent', displayText || '...');
+    messages.push({ role: 'assistant', content: full });
+  }catch(err){
+    typingDiv.remove();
+    addMessage('system-note', 'Erro ao contactar o agente. Tenta novamente.');
+    console.error(err);
+  }finally{
+    sendBtn.disabled = false;
+    document.getElementById('status-text').textContent = 'Online';
+  }
+}
+
+document.getElementById('send-btn').addEventListener('click', sendMessage);
+document.getElementById('input-box').addEventListener('keydown', e => { if(e.key === 'Enter') sendMessage(); });
+document.getElementById('apply-btn').addEventListener('click', resetChat);
+document.getElementById('reset-btn').addEventListener('click', resetChat);
+
+resetChat();
+</script>
+
+</body>
+</html>
