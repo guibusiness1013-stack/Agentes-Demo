@@ -47,6 +47,26 @@ Em qualquer um destes, o processo é parecido:
 3. Defines a variável de ambiente `ANTHROPIC_API_KEY` nas definições do serviço (nunca no código).
 4. O serviço dá-te um URL público (ex: `https://o-teu-agente.onrender.com`).
 
+## Ligar ao WhatsApp (Twilio Sandbox)
+
+O servidor já tem um endpoint pronto em `/webhook/whatsapp`. Para o ligar ao WhatsApp:
+
+1. Cria conta em [twilio.com](https://www.twilio.com) (tem plano gratuito com créditos de teste).
+2. No painel, vai a **Messaging → Try it out → Send a WhatsApp message**. Isto ativa o "WhatsApp Sandbox" — um número de teste da Twilio que qualquer pessoa pode usar temporariamente.
+3. Segue as instruções do Twilio para "entrares" no sandbox a partir do teu próprio WhatsApp (normalmente é enviar uma palavra-código para o número deles).
+4. O teu projeto já está online no Render (ex: `https://agentes-demo.onrender.com`). No painel do Twilio, em **Sandbox Settings**, cola este URL no campo "WHEN A MESSAGE COMES IN":
+   ```
+   https://agentes-demo.onrender.com/webhook/whatsapp
+   ```
+   Método: `HTTP POST`.
+5. Guarda. Agora, qualquer mensagem enviada para o número do sandbox chega ao teu agente, e a resposta dele volta automaticamente pelo WhatsApp.
+
+**Importante:** o Sandbox é só para testes — qualquer pessoa que "entre" no mesmo sandbox partilha o mesmo número. Para um cliente real, precisas de pedir um número de WhatsApp Business próprio através do Twilio (processo de aprovação da Meta, feito dentro do painel do Twilio).
+
+**Configurar o negócio:** edita o ficheiro `config.json` na raiz do projeto com a informação desse cliente (nome, horário, serviços, FAQ) — é isso que o agente usa nas respostas por WhatsApp. Depois de editares, precisas de fazer novo deploy no Render para a alteração ter efeito.
+
+**Ver os leads capturados:** abre `https://agentes-demo.onrender.com/leads` no browser — mostra em JSON todos os leads capturados por WhatsApp e pelo chat web. Isto é propositadamente simples; num produto real, liga isto a um Google Sheets, email automático, ou CRM.
+
 ## Próximos passos possíveis
 
 - Guardar os leads capturados numa base de dados ou enviá-los por email/Google Sheets automaticamente, em vez de só aparecerem no ecrã.
