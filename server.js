@@ -1,10 +1,12 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
-const twilio = require('twilio');
-const { loadConfig, buildSystemPrompt } = require('./lib/agentConfig');
+const { buildSystemPrompt } = require('./lib/agentConfig');
 const { appendLead } = require('./lib/leads');
+const { loadClients } = require('./lib/clients');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,18 +18,17 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Memória simples das conversas de WhatsApp, por número de telefone.
+// Memória das conversas de WhatsApp, por cliente + número de telefone.
 // Nota: isto reinicia sempre que o servidor reinicia (ex: quando o Render
 // "adormece" no plano gratuito). Para produção a sério, trocar por uma
 // base de dados (ex: Redis, PostgreSQL).
-const whatsappConversations = new Map();
+const conversations = new Map();
 
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false })); // o Twilio envia os dados assim
 app.use(express.static('public'));
 
-// Endpoint que o frontend chama. A chave da API nunca sai daqui.
+// Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
 app.post('/api/chat', async (req, res) => {
   try {
     const { system, messages } = req.body;
@@ -50,88 +51,25 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Endpoint que o Twilio chama sempre que chega uma mensagem de WhatsApp.
-// Configurar este URL + "/webhook/whatsapp" no painel do Twilio Sandbox.
-app.post('/webhook/whatsapp', async (req, res) => {
-  const twiml = new twilio.twiml.MessagingResponse();
-
-  try {
-    const from = req.body.From; // ex: "whatsapp:+351912345678"
-    const userText = req.body.Body || '';
-
-    if (!from || !userText) {
-      twiml.message('Não recebi nenhuma mensagem de texto.');
-      return res.type('text/xml').send(twiml.toString());
-    }
-
-    const cfg = loadConfig();
-
-    if (!whatsappConversations.has(from)) {
-      whatsappConversations.set(from, []);
-    }
-    const history = whatsappConversations.get(from);
-    history.push({ role: 'user', content: userText });
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: buildSystemPrompt(cfg),
-      messages: history
-    });
-
-    const textBlocks = (response.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text);
-    let full = textBlocks.join('\n').trim();
-
-    let displayText = full;
-    const match = full.match(/\[\[LEAD_CAPTURED\]\]([\s\S]*?)\[\[\/LEAD_CAPTURED\]\]/);
-    if (match) {
-      displayText = full.replace(match[0], '').trim();
-      try {
-        const lead = JSON.parse(match[1]);
-        appendLead({ ...lead, channel: 'whatsapp', from });
-      } catch (e) {
-        console.error('Não consegui interpretar o lead capturado:', e.message);
-      }
-    }
-
-    history.push({ role: 'assistant', content: full });
-    whatsappConversations.set(from, history);
-
-    twiml.message(displayText || 'Desculpa, não percebi. Podes repetir?');
-    res.type('text/xml').send(twiml.toString());
-  } catch (err) {
-    console.error('Erro no webhook do WhatsApp:', err.message);
-    twiml.message('Desculpa, tive um problema técnico. Tenta novamente daqui a pouco.');
-    res.type('text/xml').send(twiml.toString());
-  }
-});
-
-// Endpoint simples para veres os leads capturados (WhatsApp + web).
+// Endpoint para veres os leads capturados de todos os clientes (ou filtra por clientId).
 // Em produção, protege isto com password ou liga a um CRM em vez disto.
 app.get('/leads', (req, res) => {
-  const fs = require('fs');
-  const path = require('path');
   try {
     const leads = JSON.parse(fs.readFileSync(path.join(__dirname, 'leads.json'), 'utf-8'));
-    res.json(leads);
+    const { clientId } = req.query;
+    res.json(clientId ? leads.filter(l => l.clientId === clientId) : leads);
   } catch (e) {
     res.json([]);
   }
 });
 
-// ---- Green API (WhatsApp via QR code) ----
-// Documentação: https://green-api.com
-const GREENAPI_ID_INSTANCE = process.env.GREENAPI_ID_INSTANCE;
-const GREENAPI_API_TOKEN = process.env.GREENAPI_API_TOKEN;
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-async function sendGreenApiMessage(chatId, message) {
-  if (!GREENAPI_ID_INSTANCE || !GREENAPI_API_TOKEN) {
-    console.error('GREENAPI_ID_INSTANCE ou GREENAPI_API_TOKEN em falta no .env');
-    return;
-  }
-  const url = `https://api.green-api.com/waInstance${GREENAPI_ID_INSTANCE}/sendMessage/${GREENAPI_API_TOKEN}`;
+async function sendGreenApiMessage(client, chatId, message) {
+  const { idInstance, apiToken } = client.greenapi;
+  const url = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiToken}`;
   await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -139,19 +77,19 @@ async function sendGreenApiMessage(chatId, message) {
   });
 }
 
-async function handleIncomingMessage(chatId, userText) {
-  const cfg = loadConfig();
+async function handleIncomingMessage(client, chatId, userText) {
+  const convKey = `${client.id}::${chatId}`;
 
-  if (!whatsappConversations.has(chatId)) {
-    whatsappConversations.set(chatId, []);
+  if (!conversations.has(convKey)) {
+    conversations.set(convKey, []);
   }
-  const history = whatsappConversations.get(chatId);
+  const history = conversations.get(convKey);
   history.push({ role: 'user', content: userText });
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1000,
-    system: buildSystemPrompt(cfg),
+    system: buildSystemPrompt(client.business),
     messages: history
   });
 
@@ -166,34 +104,28 @@ async function handleIncomingMessage(chatId, userText) {
     displayText = full.replace(match[0], '').trim();
     try {
       const lead = JSON.parse(match[1]);
-      appendLead({ ...lead, channel: 'whatsapp', from: chatId });
+      appendLead({ ...lead, clientId: client.id, channel: 'whatsapp', from: chatId });
     } catch (e) {
-      console.error('Não consegui interpretar o lead capturado:', e.message);
+      console.error(`[${client.id}] Não consegui interpretar o lead capturado:`, e.message);
     }
   }
 
   history.push({ role: 'assistant', content: full });
-  whatsappConversations.set(chatId, history);
+  conversations.set(convKey, history);
 
-  await sendGreenApiMessage(chatId, displayText || 'Desculpa, não percebi. Podes repetir?');
+  await sendGreenApiMessage(client, chatId, displayText || 'Desculpa, não percebi. Podes repetir?');
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Vai perguntando ativamente ao Green API se há mensagens novas (em vez de
-// depender de um webhook automático, que nem todos os planos suportam bem).
-async function startGreenApiPolling() {
-  if (!GREENAPI_ID_INSTANCE || !GREENAPI_API_TOKEN) {
-    console.log('Green API não configurado — polling de WhatsApp desativado.');
-    return;
-  }
-  console.log('A iniciar polling do Green API para o WhatsApp...');
+// Um "polling loop" independente por cada cliente — cada um pergunta ao
+// respetivo Green API (a respetiva instância/número de WhatsApp) se há
+// mensagens novas.
+async function startPollingForClient(client) {
+  console.log(`[${client.id}] A iniciar polling do WhatsApp...`);
+  const { idInstance, apiToken } = client.greenapi;
 
   while (true) {
     try {
-      const url = `https://api.green-api.com/waInstance${GREENAPI_ID_INSTANCE}/receiveNotification/${GREENAPI_API_TOKEN}?receiveTimeout=20`;
+      const url = `https://api.green-api.com/waInstance${idInstance}/receiveNotification/${apiToken}?receiveTimeout=20`;
       const res = await fetch(url);
 
       if (!res.ok) {
@@ -201,8 +133,16 @@ async function startGreenApiPolling() {
         continue;
       }
 
-      const data = await res.json();
-      if (!data) continue; // nada de novo, volta a perguntar
+      const rawText = await res.text();
+      if (!rawText) continue; // resposta vazia = nada de novo
+
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        continue;
+      }
+      if (!data) continue;
 
       const { receiptId, body } = data;
 
@@ -214,43 +154,38 @@ async function startGreenApiPolling() {
             body.messageData?.extendedTextMessageData?.text ||
             '';
           if (chatId && userText) {
-            await handleIncomingMessage(chatId, userText);
+            await handleIncomingMessage(client, chatId, userText);
           }
         }
       } catch (procErr) {
-        console.error('Erro a processar mensagem do WhatsApp:', procErr.message);
+        console.error(`[${client.id}] Erro a processar mensagem:`, procErr.message);
       } finally {
-        // Confirma ao Green API que já processámos esta notificação.
-        const delUrl = `https://api.green-api.com/waInstance${GREENAPI_ID_INSTANCE}/deleteNotification/${GREENAPI_API_TOKEN}/${receiptId}`;
+        const delUrl = `https://api.green-api.com/waInstance${idInstance}/deleteNotification/${apiToken}/${receiptId}`;
         await fetch(delUrl, { method: 'DELETE' }).catch(() => {});
       }
     } catch (err) {
-      console.error('Erro no polling do Green API:', err.message);
+      console.error(`[${client.id}] Erro no polling:`, err.message);
       await sleep(5000);
     }
   }
 }
 
-// Endpoint que o Green API chama sempre que chega uma mensagem de WhatsApp
-// (mantido como alternativa, caso o webhook automático funcione no teu plano).
-app.post('/webhook/greenapi', async (req, res) => {
-  res.sendStatus(200);
-  try {
-    const body = req.body;
-    if (body.typeWebhook !== 'incomingMessageReceived') return;
-    const chatId = body.senderData?.chatId;
-    const userText =
-      body.messageData?.textMessageData?.textMessage ||
-      body.messageData?.extendedTextMessageData?.text ||
-      '';
-    if (!chatId || !userText) return;
-    await handleIncomingMessage(chatId, userText);
-  } catch (err) {
-    console.error('Erro no webhook do Green API:', err.message);
-  }
-});
-
 app.listen(PORT, () => {
   console.log(`Servidor do agente a correr em http://localhost:${PORT}`);
-  startGreenApiPolling(); // não bloqueia o arranque do servidor
+
+  try {
+    const clients = loadClients();
+    if (clients.length === 0) {
+      console.log('Nenhum cliente ativo em clients.json — só o chat web de demonstração está disponível.');
+    }
+    clients.forEach(client => {
+      if (client.greenapi?.idInstance && client.greenapi?.apiToken) {
+        startPollingForClient(client); // não bloqueia o arranque
+      } else {
+        console.log(`[${client.id}] Sem credenciais Green API válidas — a ignorar.`);
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao carregar clients.json:', err.message);
+  }
 });
