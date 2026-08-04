@@ -1,0 +1,36 @@
+[
+  {
+    "id": "clinica-dental-sorriso",
+    "active": true,
+    "greenapi": {
+      "idInstance": "710722701235",
+      "apiToken": "4a9000df3f324ae39728955993a70b8ac0f8031ed6c24615a3"
+    },
+    "business": {
+      "name": "Clínica Dental Sorriso",
+      "sector": "Clínica dentária",
+      "lang": "pt",
+      "hours": "Seg–Sex, 9h–19h",
+      "services": "Consulta de rotina\nBranqueamento dentário\nOrtodontia\nImplantes",
+      "faq": "Aceitam seguros?: Sim, trabalhamos com a maioria das seguradoras.\nPreço da consulta?: A primeira consulta custa 30€.\nOnde ficam?: Estamos no centro de Lisboa, perto do Marquês de Pombal.",
+      "goal": "Quer marcar uma consulta ou pedir orçamento"
+    }
+  },
+  {
+    "id": "exemplo-novo-cliente",
+    "active": false,
+    "greenapi": {
+      "idInstance": "COLA_AQUI_O_ID_DA_INSTANCIA_DESTE_CLIENTE",
+      "apiToken": "COLA_AQUI_O_TOKEN_DESTE_CLIENTE"
+    },
+    "business": {
+      "name": "Nome do Negócio do Cliente",
+      "sector": "Setor do negócio",
+      "lang": "pt",
+      "hours": "Seg–Sex, 9h–18h",
+      "services": "Serviço 1\nServiço 2\nServiço 3",
+      "faq": "Pergunta 1?: Resposta 1.\nPergunta 2?: Resposta 2.",
+      "goal": "O que conta como lead qualificado para este negócio"
+    }
+  }
+]
