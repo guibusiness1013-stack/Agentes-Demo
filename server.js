@@ -7,6 +7,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { buildSystemPrompt } = require('./lib/agentConfig');
 const { appendLead } = require('./lib/leads');
 const { loadClients } = require('./lib/clients');
+const { sendMessage: sendGreenApiMessage } = require('./lib/greenapi');
+const { startFollowUpScheduler } = require('./lib/followup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -67,16 +69,6 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function sendGreenApiMessage(client, chatId, message) {
-  const { idInstance, apiToken } = client.greenapi;
-  const url = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiToken}`;
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chatId, message })
-  });
-}
-
 async function handleIncomingMessage(client, chatId, userText) {
   const convKey = `${client.id}::${chatId}`;
 
@@ -105,6 +97,17 @@ async function handleIncomingMessage(client, chatId, userText) {
     try {
       const lead = JSON.parse(match[1]);
       appendLead({ ...lead, clientId: client.id, channel: 'whatsapp', from: chatId });
+
+      if (client.notifyNumber) {
+        const notifyText =
+          `🔔 Novo lead — ${client.business.name}\n` +
+          `Nome: ${lead.name || '—'}\n` +
+          `Contacto: ${lead.contact || '—'}\n` +
+          `Pedido: ${lead.need || '—'}`;
+        sendGreenApiMessage(client, client.notifyNumber, notifyText).catch(err =>
+          console.error(`[${client.id}] Erro a notificar staff:`, err.message)
+        );
+      }
     } catch (e) {
       console.error(`[${client.id}] Não consegui interpretar o lead capturado:`, e.message);
     }
@@ -154,7 +157,11 @@ async function startPollingForClient(client) {
             body.messageData?.extendedTextMessageData?.text ||
             '';
           if (chatId && userText) {
-            await handleIncomingMessage(client, chatId, userText);
+            if (client.notifyNumber && chatId === client.notifyNumber) {
+              console.log(`[${client.id}] Mensagem do staff ignorada (não é conversa de cliente).`);
+            } else {
+              await handleIncomingMessage(client, chatId, userText);
+            }
           }
         }
       } catch (procErr) {
@@ -185,6 +192,7 @@ app.listen(PORT, () => {
         console.log(`[${client.id}] Sem credenciais Green API válidas — a ignorar.`);
       }
     });
+    startFollowUpScheduler();
   } catch (err) {
     console.error('Erro ao carregar clients.json:', err.message);
   }
