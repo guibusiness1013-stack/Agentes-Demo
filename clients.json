@@ -44,3 +44,25 @@
     }
   }
 ]
+{
+  "id": "loja-vendas-demo",
+  "active": true,
+  "greenapi": {
+    "idInstance": "710722703322",
+    "apiToken": "acf3d7140674405284dc27e8f898c37ed8d28dc73a05491e93"
+  },
+  "followUp": {
+    "enabled": true,
+    "delayHours": 48
+  },
+  "notifyNumber": "351XXXXXXXXX@c.us",
+  "business": {
+    "name": "Loft Store",
+    "sector": "Loja online de moda e acessórios",
+    "lang": "pt",
+    "hours": "Seg–Sáb, 9h–20h",
+    "services": "Roupa casual\nAcessórios\nCalçado\nEntrega em 2-4 dias úteis",
+    "faq": "Fazem devoluções?: Sim, até 30 dias após a compra.\nQuanto custa o envio?: Grátis acima de 40€, caso contrário 3,90€.\nTêm loja física?: Não, vendemos só online.",
+    "goal": "Quer comprar um produto ou pede recomendação com base no que procura"
+  }
+}
