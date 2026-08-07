@@ -31,6 +31,23 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+app.get('/marketing/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'marketing.html'));
+});
+
+app.get('/api/marketing-client/:id', (req, res) => {
+  try {
+    const clients = JSON.parse(fs.readFileSync(path.join(__dirname, 'marketing-clients.json'), 'utf-8'));
+    const client = clients.find(c => c.id === req.params.id && c.active);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+    res.json(client.business);
+  } catch (e) {
+    res.status(500).json({ error: 'Erro ao carregar clientes de marketing.' });
+  }
+});
+
+// Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
+app.post('/api/chat', async (req, res) => {
 // Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
 app.post('/api/chat', async (req, res) => {
   try {
