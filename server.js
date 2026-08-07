@@ -48,8 +48,6 @@ app.get('/api/marketing-client/:id', (req, res) => {
 
 // Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
 app.post('/api/chat', async (req, res) => {
-// Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
-app.post('/api/chat', async (req, res) => {
   try {
     const { system, messages } = req.body;
 
