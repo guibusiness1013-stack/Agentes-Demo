@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agente de Marketing — Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #12161c;
+    --surface: #191f27;
+    --surface-2: #1f2731;
+    --line: #2a323d;
+    --text: #e8ecef;
+    --muted: #7c8798;
+    --accent: #5eead4;
+    --accent-dim: #2a4a46;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);}
+
+  .wrap{ max-width:720px; margin:0 auto; padding:28px 20px 60px; }
+
+  .header{ margin-bottom:22px; }
+  .header .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent); display:flex; align-items:center; gap:8px; margin-bottom:6px;
+  }
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);}
+  .header h1{ font-size:22px; margin:0 0 6px; }
+  .header p{ color:var(--muted); font-size:13.5px; margin:0; line-height:1.5; }
+
+  .panel{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:16px; }
+
+  .field{ margin-bottom:14px; }
+  .field label{
+    display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:6px;
+  }
+  .field select, .field textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:10px 12px; font-family:var(--sans); font-size:14px; resize:vertical;
+  }
+  .field textarea{ min-height:90px; line-height:1.5; }
+  .field select:focus, .field textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+
+  .generate-btn{
+    background:var(--accent); color:#0a1210; border:none; border-radius:8px;
+    font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    padding:12px 20px; cursor:pointer; width:100%;
+  }
+  .generate-btn:hover{ filter:brightness(1.08); }
+  .generate-btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .result{
+    background:var(--accent-dim); border:1px solid #345a54; border-radius:10px;
+    padding:16px 18px; font-size:14px; line-height:1.6; white-space:pre-wrap; min-height:60px;
+  }
+  .result.empty{ color:var(--muted); font-family:var(--mono); font-size:12px; }
+  .result.loading{ color:var(--muted); font-family:var(--mono); font-size:12px; }
+
+  .copy-btn{
+    margin-top:10px; background:transparent; border:1px solid var(--line); color:var(--muted);
+    font-family:var(--mono); font-size:11px; padding:7px 12px; border-radius:6px; cursor:pointer;
+    text-transform:uppercase; letter-spacing:.05em; display:none;
+  }
+  .copy-btn:hover{ border-color:var(--accent); color:var(--accent); }
+  .copy-btn.visible{ display:inline-block; }
+
+  .load-error{
+    background:#3a1f22; border:1px solid #6b2a30; color:#f2b8bd; border-radius:10px;
+    padding:16px 18px; font-size:13.5px; line-height:1.6; display:none;
+  }
+  .load-error.visible{ display:block; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <div class="tag"><span class="dot"></span>Agente de Marketing</div>
+    <h1 id="page-title">Gerador de conteúdo</h1>
+    <p id="page-subtitle">Descreve o que precisas — posts, legendas, ideias de campanha ou análise de um anúncio — e recebe conteúdo pronto a usar.</p>
+  </div>
+
+  <div class="load-error" id="load-error">
+    Não encontrei a configuração deste cliente. Verifica se o link está correto, ou contacta quem te enviou este link.
+  </div>
+
+  <div class="panel" id="form-panel">
+    <div class="field">
+      <label>Tipo de pedido</label>
+      <select id="cfg-type">
+        <option value="post">Publicação para redes sociais</option>
+        <option value="legenda">Legenda + hashtags</option>
+        <option value="blog">Artigo de blog / newsletter</option>
+        <option value="resposta">Resposta a comentário ou mensagem</option>
+        <option value="analise">Análise de campanha + sugestões</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Descreve o que precisas</label>
+      <textarea id="cfg-brief" placeholder="Ex: preciso de 3 legendas para Instagram sobre uma promoção de verão, tom descontraído..."></textarea>
+    </div>
+
+    <button class="generate-btn" id="btn-generate">Gerar conteúdo</button>
+  </div>
+
+  <div class="panel" id="result-panel">
+    <div class="result empty" id="result">O conteúdo gerado aparece aqui.</div>
+    <button class="copy-btn" id="btn-copy">Copiar</button>
+  </div>
+</div>
+
+<script>
+  const typeSelect = document.getElementById('cfg-type');
+  const briefInput = document.getElementById('cfg-brief');
+  const generateBtn = document.getElementById('btn-generate');
+  const resultBox = document.getElementById('result');
+  const copyBtn = document.getElementById('btn-copy');
+  const pageTitle = document.getElementById('page-title');
+  const pageSubtitle = document.getElementById('page-subtitle');
+  const loadError = document.getElementById('load-error');
+  const formPanel = document.getElementById('form-panel');
+  const resultPanel = document.getElementById('result-panel');
+
+  // Lê o id do cliente a partir do URL: /marketing/loja-do-joao -> "loja-do-joao"
+  // Se não houver id (ex: /marketing.html direto), fica em modo genérico.
+  function getClientIdFromPath() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('marketing');
+    if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+    return null;
+  }
+
+  const clientId = getClientIdFromPath();
+  let businessContext = null; // preenchido se houver cliente específico
+
+  const GENERIC_SYSTEM_PROMPT = `És um assistente de marketing de conteúdo.
+A tua função é gerar conteúdo pronto a publicar ou copiar: publicações para redes sociais, legendas com hashtags,
+artigos curtos de blog/newsletter, respostas a comentários/mensagens, ou análise de campanhas com sugestões de melhoria.
+
+Regras:
+- Escreve sempre em português de Portugal, tom natural e direto.
+- Adapta o tom ao tipo de pedido (mais informal para redes sociais, mais cuidado para blog/newsletter).
+- Não escrevas preâmbulos tipo "Aqui está o teu conteúdo:" — vai direto ao conteúdo pedido.
+- Se o pedido for ambíguo, assume o cenário mais provável e produz algo útil na mesma, sem pedir esclarecimentos.
+- Para publicações/legendas, inclui hashtags relevantes no final quando fizer sentido.
+- Para análise de campanhas, estrutura a resposta em pontos curtos e acionáveis.`;
+
+  function buildSystemPrompt() {
+    if (!businessContext) return GENERIC_SYSTEM_PROMPT;
+    return `És o assistente de marketing de conteúdo de "${businessContext.name}", um negócio do setor: ${businessContext.sector}.
+Tom de voz a usar: ${businessContext.tone || 'natural e profissional'}.
+Serviços/produtos do negócio:
+${businessContext.services || '(não especificado)'}
+
+A tua função é gerar conteúdo pronto a publicar ou copiar: publicações para redes sociais, legendas com hashtags,
+artigos curtos de blog/newsletter, respostas a comentários/mensagens, ou análise de campanhas com sugestões de melhoria.
+
+Regras:
+- Escreve sempre em português de Portugal, no tom de voz indicado acima.
+- Adapta o tom ao tipo de pedido (mais informal para redes sociais, mais cuidado para blog/newsletter), sem sair do tom de voz da marca.
+- Não escrevas preâmbulos tipo "Aqui está o teu conteúdo:" — vai direto ao conteúdo pedido.
+- Se o pedido for ambíguo, assume o cenário mais provável tendo em conta o negócio, sem pedir esclarecimentos.
+- Para publicações/legendas, inclui hashtags relevantes no final quando fizer sentido.
+- Para análise de campanhas, estrutura a resposta em pontos curtos e acionáveis.`;
+  }
+
+  async function loadClientConfig() {
+    if (!clientId) return; // modo genérico, não há nada a carregar
+
+    try {
+      const res = await fetch(`/api/marketing-client/${encodeURIComponent(clientId)}`);
+      if (!res.ok) throw new Error('not found');
+      businessContext = await res.json();
+
+      pageTitle.textContent = `Gerador de conteúdo — ${businessContext.name}`;
+      pageSubtitle.textContent = `Descreve o que precisas e recebe conteúdo pronto a usar, já no tom de voz de ${businessContext.name}.`;
+    } catch (err) {
+      loadError.classList.add('visible');
+      formPanel.style.display = 'none';
+      resultPanel.style.display = 'none';
+    }
+  }
+
+  function typeLabel(value) {
+    const map = {
+      post: 'Publicação para redes sociais',
+      legenda: 'Legenda + hashtags',
+      blog: 'Artigo de blog / newsletter',
+      resposta: 'Resposta a comentário ou mensagem',
+      analise: 'Análise de campanha + sugestões'
+    };
+    return map[value] || value;
+  }
+
+  async function generate() {
+    const brief = briefInput.value.trim();
+    if (!brief) {
+      briefInput.focus();
+      return;
+    }
+
+    generateBtn.disabled = true;
+    resultBox.classList.remove('empty');
+    resultBox.classList.add('loading');
+    resultBox.textContent = 'A gerar...';
+    copyBtn.classList.remove('visible');
+
+    const userMessage = `Tipo de pedido: ${typeLabel(typeSelect.value)}\n\nBriefing: ${brief}`;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system: buildSystemPrompt(),
+          messages: [{ role: 'user', content: userMessage }]
+        })
+      });
+
+      if (!res.ok) throw new Error('Erro do servidor');
+
+      const data = await res.json();
+      const text = (data.content || [])
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('\n')
+        .trim();
+
+      resultBox.classList.remove('loading');
+      resultBox.textContent = text || 'Não recebi resposta. Tenta outra vez.';
+      copyBtn.classList.add('visible');
+    } catch (err) {
+      resultBox.classList.remove('loading');
+      resultBox.textContent = 'Ocorreu um erro a gerar o conteúdo. Tenta outra vez.';
+      console.error(err);
+    } finally {
+      generateBtn.disabled = false;
+    }
+  }
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(resultBox.textContent).then(() => {
+      copyBtn.textContent = 'Copiado!';
+      setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 1500);
+    });
+  });
+
+  generateBtn.addEventListener('click', generate);
+  briefInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) generate();
+  });
+
+  loadClientConfig();
+</script>
+
+</body>
+</html>
