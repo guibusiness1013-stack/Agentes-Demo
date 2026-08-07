@@ -1,0 +1,12 @@
+[
+  {
+    "id": "exemplo-novo-cliente",
+    "active": false,
+    "business": {
+      "name": "Nome do Negócio do Cliente",
+      "sector": "Setor do negócio",
+      "tone": "Descontraído e próximo",
+      "services": "Serviço 1\nServiço 2\nServiço 3"
+    }
+  }
+]
