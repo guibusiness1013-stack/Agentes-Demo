@@ -2,6 +2,10 @@
   {
     "id": "exemplo-novo-cliente",
     "active": true,
+    "credentials": {
+      "username": "exemplo",
+      "password": "muda-esta-password"
+    },
     "business": {
       "name": "Nome do Negócio do Cliente",
       "sector": "Setor do negócio",
