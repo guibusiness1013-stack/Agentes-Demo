@@ -1,7 +1,7 @@
 [
   {
     "id": "exemplo-novo-cliente",
-    "active": false,
+    "active": true,
     "business": {
       "name": "Nome do Negócio do Cliente",
       "sector": "Setor do negócio",
