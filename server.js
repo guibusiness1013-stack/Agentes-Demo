@@ -31,19 +31,45 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-app.get('/marketing/:id', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'marketing.html'));
-});
-
-app.get('/api/marketing-client/:id', (req, res) => {
+// Protege as páginas de Marketing por cliente com password (username/password
+// definidos por cliente em marketing-clients.json). Se um cliente não tiver
+// "credentials" definidas, fica acessível sem password (útil para testes).
+function requireMarketingAuth(req, res, next) {
   try {
     const clients = JSON.parse(fs.readFileSync(path.join(__dirname, 'marketing-clients.json'), 'utf-8'));
     const client = clients.find(c => c.id === req.params.id && c.active);
-    if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
-    res.json(client.business);
+
+    if (!client) return res.status(404).send('Cliente não encontrado.');
+    if (!client.credentials) {
+      req.marketingClient = client;
+      return next();
+    }
+
+    const authHeader = req.headers.authorization || '';
+    const [scheme, encoded] = authHeader.split(' ');
+
+    if (scheme === 'Basic' && encoded) {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+      const [user, pass] = decoded.split(':');
+      if (user === client.credentials.username && pass === client.credentials.password) {
+        req.marketingClient = client;
+        return next();
+      }
+    }
+
+    res.set('WWW-Authenticate', 'Basic realm="Marketing"');
+    res.status(401).send('Autenticação necessária.');
   } catch (e) {
-    res.status(500).json({ error: 'Erro ao carregar clientes de marketing.' });
+    res.status(500).send('Erro ao verificar cliente.');
   }
+}
+
+app.get('/marketing/:id', requireMarketingAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'marketing.html'));
+});
+
+app.get('/api/marketing-client/:id', requireMarketingAuth, (req, res) => {
+  res.json(req.marketingClient.business);
 });
 
 // Endpoint que o chat web de demonstração chama. A chave da API nunca sai daqui.
