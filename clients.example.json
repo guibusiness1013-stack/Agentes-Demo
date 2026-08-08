@@ -3,8 +3,8 @@
     "id": "clinica-dental-sorriso",
     "active": true,
     "greenapi": {
-      "idInstance": "710722701235",
-      "apiToken": "4a9000df3f324ae39728955993a70b8ac0f8031ed6c24615a3"
+      "idInstance": "COLA_AQUI_O_ID_DA_INSTANCIA_DESTE_CLIENTE",
+      "apiToken": "COLA_AQUI_O_TOKEN_DESTE_CLIENTE"
     },
     "followUp": {
       "enabled": true,
@@ -25,8 +25,8 @@
     "id": "loja-vendas-demo",
     "active": true,
     "greenapi": {
-      "idInstance": "710722703322",
-      "apiToken": "acf3d7140674405284dc27e8f898c37ed8d28dc73a05491e93"
+      "idInstance": "COLA_AQUI_O_ID_DA_INSTANCIA_DESTE_CLIENTE",
+      "apiToken": "COLA_AQUI_O_TOKEN_DESTE_CLIENTE"
     },
     "followUp": {
       "enabled": true,

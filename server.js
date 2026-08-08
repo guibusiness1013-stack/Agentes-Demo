@@ -136,6 +136,18 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function ts() {
+  return new Date().toISOString();
+}
+
+// Backoff exponencial com jitter, para não bater no Green API sempre ao
+// mesmo ritmo quando há erros seguidos (e para não sincronizar retries
+// entre os vários clientes que correm no mesmo processo).
+function backoffMs(consecutiveErrors) {
+  const base = Math.min(5000 * 2 ** (consecutiveErrors - 1), 60000);
+  return base + Math.floor(Math.random() * 1000);
+}
+
 async function downloadImageAsBase64(url, fallbackMimeType) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Falha ao descarregar imagem: ${res.status}`);
@@ -199,23 +211,57 @@ async function handleIncomingMessage(client, chatId, userContent) {
 // respetivo Green API (a respetiva instância/número de WhatsApp) se há
 // mensagens novas.
 async function startPollingForClient(client) {
-  console.log(`[${client.id}] A iniciar polling do WhatsApp...`);
+  console.log(`[${ts()}] [${client.id}] A iniciar polling do WhatsApp...`);
   const { idInstance, apiToken } = client.greenapi;
 
+  let consecutiveErrors = 0;
+  let fastEmptyStreak = 0;
+  let idleIterations = 0;
+  const HEARTBEAT_EVERY = 45; // ~15 min, já que cada iteração parada demora até 20s (receiveTimeout)
+
   while (true) {
+    const startedAt = Date.now();
     try {
       const url = `https://api.green-api.com/waInstance${idInstance}/receiveNotification/${apiToken}?receiveTimeout=20`;
       const res = await fetch(url);
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
-        console.error(`[${client.id}] Green API respondeu com erro ${res.status}: ${errBody}`);
-        await sleep(5000);
+        consecutiveErrors++;
+        const wait = backoffMs(consecutiveErrors);
+        console.error(`[${ts()}] [${client.id}] Green API respondeu com erro ${res.status} (falha #${consecutiveErrors}): ${errBody} — a aguardar ${wait}ms`);
+        await sleep(wait);
         continue;
       }
+      consecutiveErrors = 0;
 
       const rawText = await res.text();
-      if (!rawText) continue; // resposta vazia = nada de novo
+      if (!rawText) {
+        // Resposta vazia = nada de novo. Isto é esperado quando o
+        // receiveTimeout=20 expira sem mensagens. Se a resposta vier vazia
+        // quase instantaneamente e repetidamente, o long-poll pode não
+        // estar a bloquear como esperado (risco de "busy loop" a martelar
+        // o Green API) — nesse caso abrandamos por segurança.
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < 3000) {
+          fastEmptyStreak++;
+          if (fastEmptyStreak >= 5) {
+            console.warn(`[${ts()}] [${client.id}] receiveNotification a devolver vazio quase de imediato ${fastEmptyStreak}x seguidas (${elapsed}ms) — a abrandar para não sobrecarregar o Green API.`);
+            await sleep(2000);
+          }
+        } else {
+          fastEmptyStreak = 0;
+        }
+
+        idleIterations++;
+        if (idleIterations >= HEARTBEAT_EVERY) {
+          console.log(`[${ts()}] [${client.id}] Polling ativo, sem mensagens novas.`);
+          idleIterations = 0;
+        }
+        continue;
+      }
+      fastEmptyStreak = 0;
+      idleIterations = 0;
 
       let data;
       try {
@@ -226,7 +272,7 @@ async function startPollingForClient(client) {
       if (!data) continue;
 
       const { receiptId, body } = data;
-      console.log(`[${client.id}] Notificação recebida: ${JSON.stringify(body).slice(0, 500)}`);
+      console.log(`[${ts()}] [${client.id}] Notificação recebida: ${JSON.stringify(body).slice(0, 500)}`);
 
       try {
         if (body?.typeWebhook === 'incomingMessageReceived') {
@@ -283,14 +329,16 @@ async function startPollingForClient(client) {
           }
         }
       } catch (procErr) {
-        console.error(`[${client.id}] Erro a processar mensagem:`, procErr.message);
+        console.error(`[${ts()}] [${client.id}] Erro a processar mensagem:`, procErr.message);
       } finally {
         const delUrl = `https://api.green-api.com/waInstance${idInstance}/deleteNotification/${apiToken}/${receiptId}`;
         await fetch(delUrl, { method: 'DELETE' }).catch(() => {});
       }
     } catch (err) {
-      console.error(`[${client.id}] Erro no polling:`, err.message);
-      await sleep(5000);
+      consecutiveErrors++;
+      const wait = backoffMs(consecutiveErrors);
+      console.error(`[${ts()}] [${client.id}] Erro no polling (falha #${consecutiveErrors}):`, err.message, `— a aguardar ${wait}ms`);
+      await sleep(wait);
     }
   }
 }

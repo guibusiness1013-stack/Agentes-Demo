@@ -67,6 +67,19 @@ O servidor já tem um endpoint pronto em `/webhook/whatsapp`. Para o ligar ao Wh
 
 **Ver os leads capturados:** abre `https://agentes-demo.onrender.com/leads` no browser — mostra em JSON todos os leads capturados por WhatsApp e pelo chat web. Isto é propositadamente simples; num produto real, liga isto a um Google Sheets, email automático, ou CRM.
 
+## Credenciais dos clientes de WhatsApp (`clients.json`) — IMPORTANTE
+
+O `clients.json` guarda os tokens reais do Green API de cada cliente (`greenapi.apiToken`) e por isso **não deve ser commitado no GitHub**. Este ficheiro está agora no `.gitignore`; usa o `clients.example.json` como modelo.
+
+**Localmente:** copia `clients.example.json` para `clients.json` e preenche com as credenciais reais (esse ficheiro fica só na tua máquina, nunca é enviado ao GitHub).
+
+**No Render (produção):** o `lib/clients.js` procura primeiro um "Secret File" em `/etc/secrets/clients.json` antes de olhar para o `clients.json` local. Para configurar:
+1. No painel do serviço no Render, vai a **Environment → Secret Files**.
+2. Cria um ficheiro com o caminho `/etc/secrets/clients.json` e cola lá o conteúdo completo do teu `clients.json` real (com os tokens verdadeiros).
+3. Faz deploy/redeploy — o servidor passa a carregar as credenciais a partir daí, nunca do repositório.
+
+**Se o repositório já teve tokens reais commitados antes (era o caso deste projeto):** considera esses tokens comprometidos, mesmo depois de removidos do ficheiro — continuam visíveis no histórico do Git. Vai a [console.green-api.com](https://console.green-api.com) e regenera (rotate) o `apiToken` de cada instância afetada assim que possível, e usa só os tokens novos no Secret File do Render.
+
 ## Próximos passos possíveis
 
 - Guardar os leads capturados numa base de dados ou enviá-los por email/Google Sheets automaticamente, em vez de só aparecerem no ecrã.
